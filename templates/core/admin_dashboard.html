@@ -1,0 +1,167 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h2>Admin Dashboard</h2>
+    </div>
+    <div class="col-auto">
+        <div class="d-flex align-items-center">
+            <div class="spinner-border spinner-border-sm text-primary me-2" role="status" id="reloadSpinner" style="display: none;">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <small class="text-muted" id="lastUpdateTime">Last updated: Just now</small>
+        </div>
+    </div>
+    <div class="col text-end">
+        <a href="{% url 'add_user' %}" class="btn btn-primary me-2">Add User</a>
+        <a href="{% url 'bulk_add_users' %}" class="btn btn-success me-2">Bulk Add Users</a>
+        <a href="{% url 'assign_task' %}" class="btn btn-info">Assign Task</a>
+    </div>
+</div>
+
+<div id="usersContainer">
+    <div class="card">
+        <div class="card-header bg-primary text-white">
+            <h3 class="mb-0">User Management</h3>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-striped align-middle text-center">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Username</th>
+                            <th>Email</th>
+                            <th>Profile Image</th>
+                            <th>Tasks</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for user in users %}
+                        <tr>
+                            <td>{{ user.username }}</td>
+                            <td>{{ user.email }}</td>
+                            <td>
+                                {% if user.profile_image %}
+                                    <img src="{{ user.profile_image.url }}" alt="Profile" class="rounded-circle border" style="max-width: 50px;">
+                                {% else %}
+                                    <span class="text-muted">No image</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span class="badge bg-info">{{ user.tasks.count }}</span>
+                            </td>
+                            <td>
+                                <button class="btn btn-warning btn-sm send-alert me-2" data-user-id="{{ user.id }}">
+                                    <i class="fas fa-bell"></i> Alert
+                                </button>
+                                <a href="#" class="btn btn-outline-primary btn-sm view-tasks" data-user-id="{{ user.id }}">
+                                    <i class="fas fa-tasks"></i> View Tasks
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(document).ready(function() {
+    let lastUpdateTime = new Date();
+    const reloadInterval = 60000; // 60 seconds (1 minute)
+
+    function updateLastUpdateTime() {
+        const now = new Date();
+        const diff = Math.floor((now - lastUpdateTime) / 1000);
+        let timeText = 'Just now';
+        
+        if (diff > 0) {
+            if (diff < 60) {
+                timeText = `${diff} seconds ago`;
+            } else {
+                timeText = `${Math.floor(diff / 60)} minutes ago`;
+            }
+        }
+        
+        $('#lastUpdateTime').text(`Last updated: ${timeText}`);
+    }
+
+    function reloadDashboard() {
+        $('#reloadSpinner').show();
+        $.ajax({
+            url: window.location.href,
+            method: 'GET',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            success: function(data) {
+                const newContent = $(data).find('#usersContainer').html();
+                $('#usersContainer').html(newContent);
+                lastUpdateTime = new Date();
+                updateLastUpdateTime();
+                attachEventHandlers();
+            },
+            error: function() {
+                showToast('Failed to update users!', 'danger');
+            },
+            complete: function() {
+                $('#reloadSpinner').hide();
+            }
+        });
+    }
+
+    function attachEventHandlers() {
+        $('.send-alert').off('click').click(function() {
+            const userId = $(this).data('user-id');
+            $.ajax({
+                url: `/send-alert/${userId}/`,
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                success: function(response) {
+                    showToast('Alert sent successfully!', 'success');
+                },
+                error: function() {
+                    showToast('Failed to send alert!', 'danger');
+                }
+            });
+        });
+
+        // Placeholder for view-tasks (future enhancement)
+        $('.view-tasks').off('click').click(function(e) {
+            e.preventDefault();
+            showToast('Feature coming soon: View and manage user tasks!', 'info');
+        });
+    }
+
+    // Initial event handler attachment
+    attachEventHandlers();
+
+    // Set up periodic reload
+    setInterval(reloadDashboard, reloadInterval);
+
+    // Toast function
+    function showToast(message, type) {
+        const toast = $(
+            `<div class="toast align-items-center text-bg-${type} border-0 position-fixed bottom-0 end-0 m-3" role="alert" aria-live="assertive" aria-atomic="true" style="z-index:9999;">
+                <div class="d-flex">
+                    <div class="toast-body">${message}</div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+                </div>
+            </div>`
+        );
+        $('body').append(toast);
+        const bsToast = new bootstrap.Toast(toast[0], { delay: 3000 });
+        bsToast.show();
+        toast.on('hidden.bs.toast', function () { $(this).remove(); });
+    }
+});
+</script>
+{% endblock %} 

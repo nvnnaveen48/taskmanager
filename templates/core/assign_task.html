@@ -1,0 +1,71 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h3>Assign Task</h3>
+            </div>
+            <div class="card-body">
+                <form method="post" enctype="multipart/form-data" id="taskForm">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label for="{{ form.user.id_for_label }}" class="form-label">{{ form.user.label }}</label>
+                        {{ form.user.errors }}
+                        {{ form.user }}
+                    </div>
+                    <div class="mb-3">
+                        <label for="csvFile" class="form-label">CSV File</label>
+                        <input type="file" class="form-control" id="csvFile" accept=".csv" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="{{ form.image.id_for_label }}" class="form-label">{{ form.image.label }}</label>
+                        {{ form.image.errors }}
+                        {{ form.image }}
+                    </div>
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary">Assign Task</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(document).ready(function() {
+    $('#taskForm').submit(function(e) {
+        e.preventDefault();
+        
+        const formData = new FormData(this);
+        const csvFile = $('#csvFile')[0].files[0];
+        
+        if (csvFile) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const csvData = e.target.result;
+                formData.set('csv_data', csvData);
+                
+                $.ajax({
+                    url: '{% url "assign_task" %}',
+                    type: 'POST',
+                    data: formData,
+                    processData: false,
+                    contentType: false,
+                    success: function(response) {
+                        window.location.href = '{% url "admin_dashboard" %}';
+                    },
+                    error: function() {
+                        alert('Failed to assign task!');
+                    }
+                });
+            };
+            reader.readAsText(csvFile);
+        }
+    });
+});
+</script>
+{% endblock %} 

@@ -1,0 +1,262 @@
+{% extends 'base.html' %}
+{% load csv_extras %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h2>My Tasks</h2>
+    </div>
+    <div class="col-auto">
+        <div class="d-flex align-items-center">
+            <div class="spinner-border spinner-border-sm text-primary me-2" role="status" id="reloadSpinner" style="display: none;">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <small class="text-muted" id="lastUpdateTime">Last updated: Just now</small>
+        </div>
+    </div>
+</div>
+
+<div class="row" id="tasksContainer">
+    {% for task in tasks %}
+    <div class="col-12 mb-4 task-card" data-task-id="{{ task.id }}">
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Task #{{ task.id }}</h5>
+                <span class="badge 
+                    {% if task.status == 'done' %}bg-success
+                    {% elif task.status == 'noted' %}bg-info
+                    {% else %}bg-warning text-dark
+                    {% endif %}">
+                    {{ task.status|title }}
+                </span>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    {% if task.csv_data %}
+                    <div class="{% if task.image %}col-md-6{% else %}col-md-12{% endif %}">
+                        <div class="mb-3">
+                            <h6>CSV Data:</h6>
+                            <div class="table-responsive csv-data" data-csv="{{ task.csv_data }}">
+                                {{ task.csv_table|safe }}
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                    {% if task.image %}
+                    <div class="{% if task.csv_data %}col-md-6{% else %}col-md-12{% endif %}">
+                        <div class="mb-3">
+                            <h6>Image:</h6>
+                            <img src="{{ task.image.url }}" alt="Task Image" class="img-fluid task-image-thumb rounded border" style="cursor:pointer;max-width:100%;">
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="d-flex justify-content-between align-items-center mt-3">
+                    <div>
+                        {% if task.status != 'done' and task.status != 'noted' %}
+                        <button class="btn btn-success mark-done me-2" data-task-id="{{ task.id }}">
+                            <i class="fas fa-check"></i> Done
+                        </button>
+                        <button class="btn btn-secondary add-note-btn" data-task-id="{{ task.id }}">
+                            <i class="fas fa-bell"></i> Alert
+                        </button>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% empty %}
+    <div class="col">
+        <div class="alert alert-info">
+            No tasks assigned yet.
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Image Modal -->
+<div class="modal fade" id="imageModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Task Image</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body text-center">
+        <img id="modalImage" src="" alt="Large Task Image" class="img-fluid">
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(document).ready(function() {
+    let lastUpdateTime = new Date();
+    const reloadInterval = 60000; // 60 seconds (1 minute)
+
+    function updateLastUpdateTime() {
+        const now = new Date();
+        const diff = Math.floor((now - lastUpdateTime) / 1000);
+        let timeText = 'Just now';
+        
+        if (diff > 0) {
+            if (diff < 60) {
+                timeText = `${diff} seconds ago`;
+            } else {
+                timeText = `${Math.floor(diff / 60)} minutes ago`;
+            }
+        }
+        
+        $('#lastUpdateTime').text(`Last updated: ${timeText}`);
+    }
+
+    function processCSVData() {
+        $('.csv-data').each(function() {
+            const csvData = $(this).data('csv');
+            if (csvData) {
+                try {
+                    const sep = csvData.includes('\t') ? '\t' : ',';
+                    const rows = csvData.split('\n');
+                    let tableHtml = '<table class="table table-bordered table-striped align-middle text-center">';
+                    
+                    // Add header
+                    if (rows.length > 0) {
+                        const headers = rows[0].split(sep);
+                        tableHtml += '<thead><tr>';
+                        headers.forEach(header => {
+                            tableHtml += `<th>${header.trim()}</th>`;
+                        });
+                        tableHtml += '</tr></thead>';
+                    }
+                    
+                    // Add body
+                    tableHtml += '<tbody>';
+                    for (let i = 1; i < rows.length; i++) {
+                        if (rows[i].trim()) {
+                            const cells = rows[i].split(sep);
+                            tableHtml += '<tr>';
+                            cells.forEach(cell => {
+                                tableHtml += `<td>${cell.trim()}</td>`;
+                            });
+                            tableHtml += '</tr>';
+                        }
+                    }
+                    tableHtml += '</tbody></table>';
+                    
+                    $(this).html(tableHtml);
+                } catch (e) {
+                    console.error('Error processing CSV:', e);
+                    $(this).html('<pre>' + csvData + '</pre>');
+                }
+            }
+        });
+    }
+
+    function reloadDashboard() {
+        $('#reloadSpinner').show();
+        $.ajax({
+            url: window.location.href,
+            method: 'GET',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            success: function(data) {
+                const newContent = $(data).find('#tasksContainer').html();
+                $('#tasksContainer').html(newContent);
+                lastUpdateTime = new Date();
+                updateLastUpdateTime();
+                processCSVData();
+                attachEventHandlers();
+            },
+            error: function() {
+                showToast('Failed to update tasks!', 'danger');
+            },
+            complete: function() {
+                $('#reloadSpinner').hide();
+            }
+        });
+    }
+
+    function attachEventHandlers() {
+        // Mark done button
+        $('.mark-done').off('click').click(function() {
+            const btn = $(this);
+            const taskId = btn.data('task-id');
+            $.ajax({
+                url: `/mark-task-done/${taskId}/`,
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                success: function(response) {
+                    showToast(response.message || 'Task marked as done!', 'success');
+                    btn.closest('.card-body').find('.mark-done, .add-note-btn').hide();
+                    btn.closest('.card').find('.badge').removeClass('bg-warning text-dark').addClass('bg-success').text('Done');
+                },
+                error: function() {
+                    showToast('Failed to mark task as done!', 'danger');
+                }
+            });
+        });
+
+        // Image click handler
+        $('.task-image-thumb').off('click').click(function() {
+            const src = $(this).attr('src');
+            $('#modalImage').attr('src', src);
+            $('#imageModal').modal('show');
+        });
+
+        // Alert button
+        $('.add-note-btn').off('click').click(function() {
+            const btn = $(this);
+            const taskId = btn.data('task-id');
+            
+            $.ajax({
+                url: `/add-note/${taskId}/`,
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                data: {
+                    'note': 'User has seen the task and is working on it'
+                },
+                success: function(response) {
+                    showToast('Alert sent: Task is being worked on', 'info');
+                    btn.hide();
+                    btn.closest('.card').find('.badge').removeClass('bg-warning text-dark').addClass('bg-info').text('Noted');
+                },
+                error: function() {
+                    showToast('Failed to send alert!', 'danger');
+                }
+            });
+        });
+    }
+
+    // Initial event handler attachment and CSV processing
+    attachEventHandlers();
+    processCSVData();
+
+    // Set up periodic reload
+    setInterval(reloadDashboard, reloadInterval);
+
+    // Toast function
+    function showToast(message, type) {
+        const toast = $(
+            `<div class="toast align-items-center text-bg-${type} border-0 position-fixed bottom-0 end-0 m-3" role="alert" aria-live="assertive" aria-atomic="true" style="z-index:9999;">
+                <div class="d-flex">
+                    <div class="toast-body">${message}</div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+                </div>
+            </div>`
+        );
+        $('body').append(toast);
+        const bsToast = new bootstrap.Toast(toast[0], { delay: 3000 });
+        bsToast.show();
+        toast.on('hidden.bs.toast', function () { $(this).remove(); });
+    }
+});
+</script>
+{% endblock %} 
