@@ -1,0 +1,12 @@
+[Unit]
+Description=Gunicorn daemon for Django Project
+After=network.target
+
+[Service]
+User=myntra
+Group=www-data
+WorkingDirectory=/home/myntra/proj
+ExecStart=/home/myntra/proj/venv/bin/gunicorn --workers 3 --bind unix:/run/gunicorn.sock taskmanager.wsgi:application --access-logfile /home/myntra/proj/logs/gunicorn-access.log --error-logfile /home/myntra/proj/logs/gunicorn-error.log
+
+[Install]
+WantedBy=multi-user.target 

@@ -8,18 +8,23 @@ import os
 class CustomUser(AbstractUser):
     is_admin = models.BooleanField(default=False)
     profile_image = models.ImageField(upload_to='profile_images/', null=True, blank=True)
+    email = models.EmailField(blank=True, null=True)
+    username = models.CharField(max_length=150, unique=True)
+
+    class Meta:
+        ordering = ['-date_joined']
 
 class Task(models.Model):
     STATUS_CHOICES = [
         ('pending', 'Pending'),
-        ('done', 'Done'),
-        ('noted', 'Noted')
+        ('in_progress', 'In Progress'),
+        ('done', 'Done')
     ]
     
     user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='tasks')
     csv_data = models.TextField(null=True, blank=True)
     image = models.ImageField(upload_to='task_images/', null=True, blank=True)
-    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

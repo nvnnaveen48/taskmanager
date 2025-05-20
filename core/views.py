@@ -3,13 +3,20 @@ from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib import messages
 from django.http import JsonResponse
 from django.contrib.auth import logout
+from django.views.decorators.csrf import ensure_csrf_cookie
 import pandas as pd
 import json
 from .models import CustomUser, Task, Notification
 from .forms import CustomUserCreationForm, CSVUploadForm, TaskAssignmentForm, NoteForm
+from django.contrib.auth.models import User
+from django.db.models import Count
+from datetime import datetime
 
 def is_admin(user):
     return user.is_authenticated and user.is_admin
+
+def is_staff_user(user):
+    return user.is_staff
 
 @login_required
 def home(request):
@@ -119,7 +126,7 @@ def add_note(request, task_id):
     if request.method == 'POST':
         form = NoteForm(request.POST)
         if form.is_valid():
-            task.status = 'noted'
+            task.status = 'in_progress'
             task.save()
 
             admin_user = CustomUser.objects.filter(is_admin=True).first()
@@ -127,11 +134,11 @@ def add_note(request, task_id):
                 Notification.objects.create(
                     user=admin_user,
                     notification_type='task_noted',
-                    message=f'Note from {request.user.username}: {form.cleaned_data["note"]}'
+                    message=f'Task {task_id} marked as in progress by {request.user.username}'
                 )
-                return JsonResponse({'status': 'success', 'message': 'Note sent to admin.'})
+                return JsonResponse({'status': 'success', 'message': 'Status updated to in progress.'})
             else:
-                return JsonResponse({'status': 'success', 'message': 'Note saved, but no admin to notify.'})
+                return JsonResponse({'status': 'success', 'message': 'Status updated to in progress, but no admin to notify.'})
     return JsonResponse({'status': 'error', 'message': 'Invalid request.'})
 
 @user_passes_test(is_admin)
@@ -143,3 +150,195 @@ def send_alert(request, user_id):
         message='Alert from admin'
     )
     return JsonResponse({'status': 'success'})
+
+@ensure_csrf_cookie
+@user_passes_test(is_staff_user)
+def admin_stats(request):
+    stats = {
+        'total_tasks': Task.objects.count(),
+        'completed_tasks': Task.objects.filter(status='done').count(),
+        'in_progress_tasks': Task.objects.filter(status='in_progress').count(),
+        'pending_tasks': Task.objects.filter(status='pending').count()
+    }
+    return JsonResponse(stats)
+
+@ensure_csrf_cookie
+@user_passes_test(is_staff_user)
+def admin_tasks(request):
+    if request.method == 'GET':
+        tasks = Task.objects.all().order_by('-created_at')
+        tasks_data = [{
+            'id': task.id,
+            'username': task.user.username if task.user else 'Unassigned',
+            'status': task.status,
+            'created_at': task.created_at.isoformat(),
+            'has_image': bool(task.image),
+            'has_csv': bool(task.csv_data)
+        } for task in tasks]
+        return JsonResponse(tasks_data, safe=False)
+    
+    elif request.method == 'POST':
+        try:
+            # Get form data
+            user_id = request.POST.get('assigned_to')
+            
+            if not user_id:
+                return JsonResponse({'status': 'error', 'message': 'User assignment is required'}, status=400)
+            
+            # Create task
+            task = Task.objects.create(
+                user_id=user_id,
+                status='pending'
+            )
+            
+            # Handle file uploads
+            image = request.FILES.get('image')
+            csv_file = request.FILES.get('csv_file')
+            csv_data = request.POST.get('csv_data')
+            
+            if image:
+                task.image = image
+                task.save()
+            
+            if csv_file:
+                csv_content = csv_file.read().decode('utf-8')
+                task.csv_data = csv_content
+                task.save()
+            elif csv_data:
+                task.csv_data = csv_data
+                task.save()
+            
+            # Create notification
+            Notification.objects.create(
+                user_id=user_id,
+                notification_type='task_assigned',
+                message=f'New task assigned: Task #{task.id}'
+            )
+            
+            return JsonResponse({
+                'status': 'success',
+                'task_id': task.id,
+                'message': 'Task created successfully'
+            })
+            
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+
+@ensure_csrf_cookie
+@user_passes_test(is_staff_user)
+def admin_users(request):
+    if request.method == 'GET':
+        users = CustomUser.objects.all().order_by('-date_joined')
+        users_data = [{
+            'id': user.id,
+            'username': user.username,
+            'email': user.email or '',
+            'is_active': user.is_active,
+            'is_staff': user.is_staff,
+            'date_joined': user.date_joined.isoformat()
+        } for user in users]
+        return JsonResponse(users_data, safe=False)
+    
+    elif request.method == 'POST':
+        try:
+            username = request.POST.get('username')
+            email = request.POST.get('email', '')  # Make email optional
+            password = request.POST.get('password')
+            
+            if not username or not password:
+                return JsonResponse({
+                    'status': 'error',
+                    'message': 'Username and password are required'
+                }, status=400)
+            
+            # Check for unique username
+            if CustomUser.objects.filter(username=username).exists():
+                return JsonResponse({
+                    'status': 'error',
+                    'message': 'Username already exists'
+                }, status=400)
+            
+            user = CustomUser.objects.create_user(
+                username=username,
+                email=email,
+                password=password,
+                is_staff=False  # Always create regular users
+            )
+            return JsonResponse({'status': 'success', 'user_id': user.id})
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+
+@ensure_csrf_cookie
+@user_passes_test(is_staff_user)
+def admin_task_detail(request, task_id):
+    task = get_object_or_404(Task, id=task_id)
+    if request.method == 'GET':
+        return JsonResponse({
+            'id': task.id,
+            'status': task.status,
+            'created_at': task.created_at.isoformat(),
+            'assigned_to': task.user.username if task.user else None,
+            'has_image': bool(task.image),
+            'has_csv': bool(task.csv_data),
+            'csv_data': task.csv_data if task.csv_data else None,
+            'image_url': task.image.url if task.image else None
+        })
+    elif request.method == 'PUT':
+        try:
+            data = json.loads(request.body)
+            task.status = data.get('status', task.status)
+            if 'assigned_to' in data:
+                task.user_id = data['assigned_to']
+            task.save()
+            return JsonResponse({'status': 'success'})
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+    elif request.method == 'DELETE':
+        try:
+            # Delete associated files
+            if task.image:
+                task.image.delete(save=False)
+            task.delete()
+            return JsonResponse({'status': 'success', 'message': 'Task deleted successfully'})
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+
+@ensure_csrf_cookie
+@user_passes_test(is_staff_user)
+def admin_user_detail(request, user_id):
+    user = get_object_or_404(CustomUser, id=user_id)
+    if request.method == 'GET':
+        return JsonResponse({
+            'id': user.id,
+            'username': user.username,
+            'email': user.email,
+            'is_active': user.is_active,
+            'is_staff': user.is_staff,
+            'date_joined': user.date_joined.isoformat()
+        })
+    elif request.method == 'PUT':
+        try:
+            data = json.loads(request.body)
+            user.username = data.get('username', user.username)
+            user.email = data.get('email', user.email)
+            user.is_active = data.get('is_active', user.is_active)
+            user.is_staff = data.get('is_staff', user.is_staff)
+            if 'password' in data:
+                user.set_password(data['password'])
+            user.save()
+            return JsonResponse({'status': 'success'})
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+    elif request.method == 'DELETE':
+        try:
+            # Check if user has any tasks
+            if Task.objects.filter(assigned_to=user).exists():
+                return JsonResponse({
+                    'status': 'error',
+                    'message': 'Cannot delete user with assigned tasks'
+                }, status=400)
+            
+            user.delete()
+            return JsonResponse({'status': 'success', 'message': 'User deleted successfully'})
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=400)

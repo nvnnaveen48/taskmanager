@@ -2,98 +2,398 @@
 {% load csv_extras %}
 
 {% block content %}
-<div class="row mb-4">
-    <div class="col">
-        <h2>My Tasks</h2>
-    </div>
-    <div class="col-auto">
-        <div class="d-flex align-items-center">
-            <div class="spinner-border spinner-border-sm text-primary me-2" role="status" id="reloadSpinner" style="display: none;">
-                <span class="visually-hidden">Loading...</span>
+<!-- Add CSRF Token -->
+{% csrf_token %}
+
+<div class="container-fluid px-3 px-md-4">
+    <div class="row mb-4">
+        <div class="col-12 col-md-6">
+            <h2>My Tasks</h2>
+        </div>
+        <div class="col-12 col-md-6">
+            <div class="d-flex align-items-center justify-content-end">
+                <div class="spinner-border spinner-border-sm text-primary me-2" role="status" id="reloadSpinner" style="display: none;">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <small class="text-muted" id="lastUpdateTime">Last updated: Just now</small>
             </div>
-            <small class="text-muted" id="lastUpdateTime">Last updated: Just now</small>
         </div>
     </div>
-</div>
 
-<div class="row" id="tasksContainer">
-    {% for task in tasks %}
-    <div class="col-12 mb-4 task-card" data-task-id="{{ task.id }}">
-        <div class="card shadow-sm border-0">
-            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-                <h5 class="mb-0">Task #{{ task.id }}</h5>
-                <span class="badge 
-                    {% if task.status == 'done' %}bg-success
-                    {% elif task.status == 'noted' %}bg-info
-                    {% else %}bg-warning text-dark
-                    {% endif %}">
-                    {{ task.status|title }}
-                </span>
-            </div>
-            <div class="card-body">
-                <div class="row">
-                    {% if task.csv_data %}
-                    <div class="{% if task.image %}col-md-6{% else %}col-md-12{% endif %}">
-                        <div class="mb-3">
-                            <h6>CSV Data:</h6>
-                            <div class="table-responsive csv-data" data-csv="{{ task.csv_data }}">
-                                {{ task.csv_table|safe }}
+    {% if user.is_staff %}
+    <!-- Custom Admin Panel Section -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Admin Panel</h5>
+                    <div>
+                        <button class="btn btn-sm btn-outline-light me-2" id="refreshAdminData">
+                            <i class="fas fa-sync-alt"></i> Refresh
+                        </button>
+                        <button class="btn btn-sm btn-outline-light" id="toggleAdminView">
+                            <i class="fas fa-th-large"></i> Toggle View
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <!-- Admin Stats -->
+                    <div class="row g-3 mb-4">
+                        <div class="col-12 col-sm-6 col-md-3">
+                            <div class="card bg-primary text-white">
+                                <div class="card-body">
+                                    <h6 class="card-title">Total Tasks</h6>
+                                    <h3 class="mb-0" id="totalTasks">-</h3>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-12 col-sm-6 col-md-3">
+                            <div class="card bg-success text-white">
+                                <div class="card-body">
+                                    <h6 class="card-title">Completed Tasks</h6>
+                                    <h3 class="mb-0" id="completedTasks">-</h3>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-12 col-sm-6 col-md-3">
+                            <div class="card bg-info text-white">
+                                <div class="card-body">
+                                    <h6 class="card-title">In Progress</h6>
+                                    <h3 class="mb-0" id="inProgressTasks">-</h3>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-12 col-sm-6 col-md-3">
+                            <div class="card bg-warning text-dark">
+                                <div class="card-body">
+                                    <h6 class="card-title">Pending Tasks</h6>
+                                    <h3 class="mb-0" id="pendingTasks">-</h3>
+                                </div>
                             </div>
                         </div>
                     </div>
-                    {% endif %}
-                    {% if task.image %}
-                    <div class="{% if task.csv_data %}col-md-6{% else %}col-md-12{% endif %}">
-                        <div class="mb-3">
-                            <h6>Image:</h6>
-                            <img src="{{ task.image.url }}" alt="Task Image" class="img-fluid task-image-thumb rounded border" style="cursor:pointer;max-width:100%;">
+
+                    <!-- Admin Navigation -->
+                    <div class="row mb-4">
+                        <div class="col-12">
+                            <ul class="nav nav-tabs" id="adminTabs" role="tablist">
+                                <li class="nav-item">
+                                    <a class="nav-link active" id="tasks-tab" data-bs-toggle="tab" href="#tasks" role="tab">
+                                        <i class="fas fa-tasks"></i> Tasks
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" id="users-tab" data-bs-toggle="tab" href="#users" role="tab">
+                                        <i class="fas fa-users"></i> Users
+                                    </a>
+                                </li>
+                            </ul>
                         </div>
                     </div>
-                    {% endif %}
+
+                    <!-- Tab Content -->
+                    <div class="tab-content" id="adminTabContent">
+                        <!-- Tasks Tab -->
+                        <div class="tab-pane fade show active" id="tasks" role="tabpanel">
+                            <div class="card">
+                                <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                                    <h6 class="mb-0">Task Management</h6>
+                                    <div class="d-flex gap-2">
+                                        <div class="input-group" style="width: 300px;">
+                                            <input type="text" class="form-control form-control-sm" placeholder="Search tasks..." id="taskSearch">
+                                            <button class="btn btn-outline-secondary btn-sm" type="button">
+                                                <i class="fas fa-search"></i>
+                                            </button>
+                                        </div>
+                                        <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addTaskModal">
+                                            <i class="fas fa-plus"></i> Add Task
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="card-body">
+                                    <div class="table-responsive">
+                                        <table class="table table-hover" id="adminTaskTable">
+                                            <thead>
+                                                <tr>
+                                                    <th>ID</th>
+                                                    <th>Status</th>
+                                                    <th>Created</th>
+                                                    <th>Assigned To</th>
+                                                    <th>Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <!-- Will be populated by JavaScript -->
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Users Tab -->
+                        <div class="tab-pane fade" id="users" role="tabpanel">
+                            <div class="card">
+                                <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                                    <h6 class="mb-0">User Management</h6>
+                                    <div class="d-flex gap-2">
+                                        <div class="input-group" style="width: 300px;">
+                                            <input type="text" class="form-control form-control-sm" placeholder="Search users..." id="userSearch">
+                                            <button class="btn btn-outline-secondary btn-sm" type="button">
+                                                <i class="fas fa-search"></i>
+                                            </button>
+                                        </div>
+                                        <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addUserModal">
+                                            <i class="fas fa-user-plus"></i> Add User
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="card-body">
+                                    <div class="table-responsive">
+                                        <table class="table table-hover" id="adminUserTable">
+                                            <thead>
+                                                <tr>
+                                                    <th>ID</th>
+                                                    <th>Username</th>
+                                                    <th>Email</th>
+                                                    <th>Status</th>
+                                                    <th>Role</th>
+                                                    <th>Joined</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <!-- Will be populated by JavaScript -->
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <div class="d-flex justify-content-between align-items-center mt-3">
-                    <div>
-                        {% if task.status != 'done' and task.status != 'noted' %}
-                        <button class="btn btn-success mark-done me-2" data-task-id="{{ task.id }}">
-                            <i class="fas fa-check"></i> Done
-                        </button>
-                        <button class="btn btn-secondary add-note-btn" data-task-id="{{ task.id }}">
-                            <i class="fas fa-bell"></i> Alert
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="row" id="tasksContainer">
+        {% for task in tasks %}
+        <div class="col-12 mb-4 task-card" data-task-id="{{ task.id }}" style="cursor: pointer;" onclick="window.location.href='/task/{{ task.id }}';">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Task #{{ task.id }} - {{ task.user.username }}</h5>
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="badge 
+                            {% if task.status == 'done' %}bg-success
+                            {% elif task.status == 'in_progress' %}bg-info
+                            {% else %}bg-warning text-dark
+                            {% endif %}">
+                            {{ task.status|title }}
+                        </span>
+                        {% if user.is_staff %}
+                        <button class="btn btn-sm btn-light view-task-details" data-task-id="{{ task.id }}">
+                            <i class="fas fa-eye"></i> View Details
                         </button>
                         {% endif %}
                     </div>
                 </div>
+                <div class="card-body d-flex flex-column">
+                    <div class="row g-3">
+                        {% if task.csv_data %}
+                        <div class="col-12">
+                            <div class="mb-3">
+                                <h6>CSV Data:</h6>
+                                <div class="table-responsive csv-data" data-csv="{{ task.csv_data }}">
+                                    {{ task.csv_table|safe }}
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
+                        {% if task.image %}
+                        <div class="col-12">
+                            <div class="mb-3">
+                                <h6>Image:</h6>
+                                <img src="{{ task.image.url }}" alt="Task Image" class="img-fluid task-image-thumb rounded border" style="cursor:pointer;max-width:100%;">
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                    <div class="mt-auto pt-3">
+                        <div class="d-flex flex-wrap gap-2">
+                            {% if task.status != 'done' %}
+                            <button class="btn btn-success mark-done flex-grow-1" data-task-id="{{ task.id }}">
+                                <i class="fas fa-check"></i> Done
+                            </button>
+                            {% if task.status != 'in_progress' %}
+                            <button class="btn btn-secondary add-note-btn flex-grow-1" data-task-id="{{ task.id }}">
+                                <i class="fas fa-bell"></i> Alert
+                            </button>
+                            {% endif %}
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% empty %}
+        <div class="col-12">
+            <div class="alert alert-info">
+                No tasks assigned yet.
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- Add Task Modal -->
+<div class="modal fade" id="addTaskModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add New Task</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addTaskForm">
+                    <div class="mb-3">
+                        <label class="form-label">Assign To</label>
+                        <select class="form-select" name="assigned_to" required>
+                            <option value="">Select User</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Image (Optional)</label>
+                        <input type="file" class="form-control" name="image" accept="image/*">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">CSV File (Optional)</label>
+                        <input type="file" class="form-control" name="csv_file" accept=".csv,.txt">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Or Paste CSV Data (Optional)</label>
+                        <textarea class="form-control" name="csv_data" rows="3" placeholder="Paste CSV data here..."></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="saveTask">Save Task</button>
             </div>
         </div>
     </div>
-    {% empty %}
-    <div class="col">
-        <div class="alert alert-info">
-            No tasks assigned yet.
+</div>
+
+<!-- Add User Modal -->
+<div class="modal fade" id="addUserModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add New User</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addUserForm">
+                    <div class="mb-3">
+                        <label class="form-label">Username</label>
+                        <input type="text" class="form-control" name="username" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Email</label>
+                        <input type="email" class="form-control" name="email">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Password</label>
+                        <input type="password" class="form-control" name="password" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Role</label>
+                        <select class="form-select" name="role">
+                            <option value="user">User</option>
+                            <option value="staff">Staff</option>
+                        </select>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="saveUser">Save User</button>
+            </div>
         </div>
     </div>
-    {% endfor %}
 </div>
 
 <!-- Image Modal -->
 <div class="modal fade" id="imageModal" tabindex="-1">
-  <div class="modal-dialog modal-lg modal-dialog-centered">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title">Task Image</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body text-center">
-        <img id="modalImage" src="" alt="Large Task Image" class="img-fluid">
-      </div>
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Task Image</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body text-center">
+                <img id="modalImage" src="" alt="Large Task Image" class="img-fluid">
+            </div>
+        </div>
     </div>
-  </div>
+</div>
+
+<!-- Task Details Modal -->
+<div class="modal fade" id="taskDetailsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Task Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="task-info mb-4">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <p><strong>Task ID:</strong> <span id="taskDetailId"></span></p>
+                            <p><strong>Status:</strong> <span id="taskDetailStatus"></span></p>
+                        </div>
+                        <div class="col-md-6">
+                            <p><strong>Created:</strong> <span id="taskDetailCreated"></span></p>
+                            <p><strong>Assigned To:</strong> <span id="taskDetailAssignedTo"></span></p>
+                        </div>
+                    </div>
+                </div>
+                <div id="taskDetailCsvData" class="mb-4" style="display: none;">
+                    <h6>CSV Data:</h6>
+                    <div class="table-responsive"></div>
+                </div>
+                <div id="taskDetailImage" class="text-center mb-4" style="display: none;">
+                    <h6>Image:</h6>
+                    <img src="" alt="Task Image" class="img-fluid rounded border">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                {% if user.is_staff %}
+                <button type="button" class="btn btn-danger" id="deleteTask">Delete Task</button>
+                {% endif %}
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
 $(document).ready(function() {
+    // Get CSRF token from the page
+    const csrftoken = $('input[name="csrfmiddlewaretoken"]').val();
+
+    // Add CSRF token to all AJAX requests
+    $.ajaxSetup({
+        beforeSend: function(xhr, settings) {
+            if (!(/^(GET|HEAD|OPTIONS|TRACE)$/.test(settings.type)) && !this.crossDomain) {
+                xhr.setRequestHeader("X-CSRFToken", csrftoken);
+            }
+        }
+    });
+
     let lastUpdateTime = new Date();
     const reloadInterval = 60000; // 60 seconds (1 minute)
 
@@ -113,150 +413,359 @@ $(document).ready(function() {
         $('#lastUpdateTime').text(`Last updated: ${timeText}`);
     }
 
-    function processCSVData() {
-        $('.csv-data').each(function() {
-            const csvData = $(this).data('csv');
-            if (csvData) {
-                try {
-                    const sep = csvData.includes('\t') ? '\t' : ',';
-                    const rows = csvData.split('\n');
-                    let tableHtml = '<table class="table table-bordered table-striped align-middle text-center">';
-                    
-                    // Add header
-                    if (rows.length > 0) {
-                        const headers = rows[0].split(sep);
-                        tableHtml += '<thead><tr>';
-                        headers.forEach(header => {
-                            tableHtml += `<th>${header.trim()}</th>`;
-                        });
-                        tableHtml += '</tr></thead>';
-                    }
-                    
-                    // Add body
-                    tableHtml += '<tbody>';
-                    for (let i = 1; i < rows.length; i++) {
-                        if (rows[i].trim()) {
-                            const cells = rows[i].split(sep);
-                            tableHtml += '<tr>';
-                            cells.forEach(cell => {
-                                tableHtml += `<td>${cell.trim()}</td>`;
-                            });
-                            tableHtml += '</tr>';
-                        }
-                    }
-                    tableHtml += '</tbody></table>';
-                    
-                    $(this).html(tableHtml);
-                } catch (e) {
-                    console.error('Error processing CSV:', e);
-                    $(this).html('<pre>' + csvData + '</pre>');
-                }
-            }
-        });
-    }
-
-    function reloadDashboard() {
-        $('#reloadSpinner').show();
+    function loadAdminData() {
+        // Load stats
         $.ajax({
-            url: window.location.href,
+            url: '/api/admin/stats/',
             method: 'GET',
-            headers: {
-                'X-CSRFToken': '{{ csrf_token }}'
-            },
             success: function(data) {
-                const newContent = $(data).find('#tasksContainer').html();
-                $('#tasksContainer').html(newContent);
-                lastUpdateTime = new Date();
-                updateLastUpdateTime();
-                processCSVData();
-                attachEventHandlers();
-            },
-            error: function() {
-                showToast('Failed to update tasks!', 'danger');
-            },
-            complete: function() {
-                $('#reloadSpinner').hide();
+                $('#totalTasks').text(data.total_tasks);
+                $('#completedTasks').text(data.completed_tasks);
+                $('#inProgressTasks').text(data.in_progress_tasks);
+                $('#pendingTasks').text(data.pending_tasks);
+            }
+        });
+
+        // Load tasks
+        $.ajax({
+            url: '/api/admin/tasks/',
+            method: 'GET',
+            success: function(data) {
+                const tbody = $('#adminTaskTable tbody');
+                tbody.empty();
+                data.forEach(task => {
+                    tbody.append(`
+                        <tr>
+                            <td>${task.id}</td>
+                            <td><span class="badge bg-${getStatusColor(task.status)}">${task.status}</span></td>
+                            <td>${new Date(task.created_at).toLocaleDateString()}</td>
+                            <td>${task.username}</td>
+                            <td>
+                                <div class="btn-group btn-group-sm">
+                                    <button class="btn btn-outline-primary view-task-details" data-task-id="${task.id}">
+                                        <i class="fas fa-eye"></i>
+                                    </button>
+                                    <button class="btn btn-outline-danger delete-task" data-task-id="${task.id}">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    `);
+                });
+            }
+        });
+
+        // Load users
+        $.ajax({
+            url: '/api/admin/users/',
+            method: 'GET',
+            success: function(data) {
+                const tbody = $('#adminUserTable tbody');
+                tbody.empty();
+                data.forEach(user => {
+                    if (user.username !== 'administrator') {
+                        tbody.append(`
+                            <tr data-user-id="${user.id}">
+                                <td>${user.id}</td>
+                                <td>${user.username}</td>
+                                <td>${user.email}</td>
+                                <td>
+                                    <span class="badge bg-${user.is_active ? 'success' : 'danger'}">
+                                        ${user.is_active ? 'Active' : 'Inactive'}
+                                    </span>
+                                </td>
+                                <td>
+                                    <span class="badge bg-${user.is_staff ? 'primary' : 'secondary'}">
+                                        ${user.is_staff ? 'Staff' : 'User'}
+                                    </span>
+                                </td>
+                                <td>${new Date(user.date_joined).toLocaleDateString()}</td>
+                            </tr>
+                        `);
+                    }
+                });
+
+                // Populate user dropdown in task form
+                populateUserDropdown();
             }
         });
     }
 
-    function attachEventHandlers() {
-        // Mark done button
-        $('.mark-done').off('click').click(function() {
-            const btn = $(this);
-            const taskId = btn.data('task-id');
-            $.ajax({
-                url: `/mark-task-done/${taskId}/`,
-                method: 'POST',
-                headers: {
-                    'X-CSRFToken': '{{ csrf_token }}'
-                },
-                success: function(response) {
-                    showToast(response.message || 'Task marked as done!', 'success');
-                    btn.closest('.card-body').find('.mark-done, .add-note-btn').hide();
-                    btn.closest('.card').find('.badge').removeClass('bg-warning text-dark').addClass('bg-success').text('Done');
-                },
-                error: function() {
-                    showToast('Failed to mark task as done!', 'danger');
-                }
-            });
-        });
+    function getStatusColor(status) {
+        switch(status) {
+            case 'done': return 'success';
+            case 'in_progress': return 'info';
+            default: return 'warning';
+        }
+    }
 
-        // Image click handler
-        $('.task-image-thumb').off('click').click(function() {
-            const src = $(this).attr('src');
-            $('#modalImage').attr('src', src);
-            $('#imageModal').modal('show');
-        });
+    // Event Handlers
+    $('#refreshAdminData').click(function() {
+        loadAdminData();
+    });
 
-        // Alert button
-        $('.add-note-btn').off('click').click(function() {
-            const btn = $(this);
-            const taskId = btn.data('task-id');
-            
-            $.ajax({
-                url: `/add-note/${taskId}/`,
-                method: 'POST',
-                headers: {
-                    'X-CSRFToken': '{{ csrf_token }}'
-                },
-                data: {
-                    'note': 'User has seen the task and is working on it'
-                },
-                success: function(response) {
-                    showToast('Alert sent: Task is being worked on', 'info');
-                    btn.hide();
-                    btn.closest('.card').find('.badge').removeClass('bg-warning text-dark').addClass('bg-info').text('Noted');
-                },
-                error: function() {
-                    showToast('Failed to send alert!', 'danger');
-                }
-            });
+    $('#toggleAdminView').click(function() {
+        $('.card').toggleClass('compact-view');
+    });
+
+    $('#saveUser').click(function() {
+        const form = $('#addUserForm')[0];
+        const formData = new FormData(form);
+        
+        // Validate required fields
+        if (!formData.get('username') || !formData.get('password')) {
+            showToast('Please fill in all required fields!', 'danger');
+            return;
+        }
+        
+        $.ajax({
+            url: '/api/admin/users/',
+            method: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            success: function(response) {
+                $('#addUserModal').modal('hide');
+                form.reset();
+                loadAdminData();
+                showToast('User added successfully!', 'success');
+            },
+            error: function(xhr) {
+                const error = xhr.responseJSON?.message || 'Failed to add user!';
+                showToast(error, 'danger');
+            }
+        });
+    });
+
+    // Save task handler
+    $('#saveTask').click(function() {
+        const form = $('#addTaskForm')[0];
+        const formData = new FormData(form);
+        
+        // Validate form
+        if (!formData.get('assigned_to')) {
+            showToast('Please select a user!', 'danger');
+            return;
+        }
+        
+        $.ajax({
+            url: '/api/admin/tasks/',
+            method: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            success: function(response) {
+                $('#addTaskModal').modal('hide');
+                form.reset();
+                $('select[name="assigned_to"]').val('');
+                showToast(response.message || 'Task added successfully!', 'success');
+                window.location.reload(); // Reload the page
+            },
+            error: function(xhr) {
+                const error = xhr.responseJSON?.message || 'Failed to add task!';
+                showToast(error, 'danger');
+            }
+        });
+    });
+
+    $('#taskSearch').on('input', function() {
+        const searchText = $(this).val().toLowerCase();
+        $('#adminTaskTable tbody tr').each(function() {
+            const rowText = $(this).text().toLowerCase();
+            $(this).toggle(rowText.includes(searchText));
+        });
+    });
+
+    $('#userSearch').on('input', function() {
+        const searchText = $(this).val().toLowerCase();
+        $('#adminUserTable tbody tr').each(function() {
+            const rowText = $(this).text().toLowerCase();
+            $(this).toggle(rowText.includes(searchText));
+        });
+    });
+
+    // Modal reset handlers
+    $('#addTaskModal').on('hidden.bs.modal', function() {
+        $('#addTaskForm')[0].reset();
+        $('select[name="assigned_to"]').val('');
+    });
+
+    $('#addUserModal').on('hidden.bs.modal', function() {
+        $('#addUserForm')[0].reset();
+    });
+
+    // Populate user dropdown in task form
+    function populateUserDropdown() {
+        $.ajax({
+            url: '/api/admin/users/',
+            method: 'GET',
+            success: function(data) {
+                const userSelect = $('#addTaskForm select[name="assigned_to"]');
+                userSelect.empty();
+                userSelect.append('<option value="">Select User</option>');
+                data.forEach(user => {
+                    // Only add active, non-admin users
+                    if (user.is_active && !user.is_staff) {
+                        userSelect.append(`<option value="${user.id}">${user.username}</option>`);
+                    }
+                });
+            }
         });
     }
 
-    // Initial event handler attachment and CSV processing
-    attachEventHandlers();
-    processCSVData();
+    // Load initial admin data if user is staff
+    {% if user.is_staff %}
+    loadAdminData();
+    {% endif %}
 
-    // Set up periodic reload
-    setInterval(reloadDashboard, reloadInterval);
+    // Add delete task handler
+    $(document).on('click', '.delete-task', function() {
+        const taskId = $(this).data('task-id');
+        if (confirm('Are you sure you want to delete this task?')) {
+            $.ajax({
+                url: `/api/admin/tasks/${taskId}/`,
+                method: 'DELETE',
+                headers: {
+                    'X-CSRFToken': csrftoken
+                },
+                success: function(response) {
+                    showToast('Task deleted successfully!', 'success');
+                    window.location.reload(); // Reload the page
+                },
+                error: function(xhr) {
+                    const error = xhr.responseJSON?.message || 'Failed to delete task!';
+                    showToast(error, 'danger');
+                }
+            });
+        }
+    });
 
-    // Toast function
-    function showToast(message, type) {
-        const toast = $(
-            `<div class="toast align-items-center text-bg-${type} border-0 position-fixed bottom-0 end-0 m-3" role="alert" aria-live="assertive" aria-atomic="true" style="z-index:9999;">
-                <div class="d-flex">
-                    <div class="toast-body">${message}</div>
-                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
-                </div>
-            </div>`
-        );
-        $('body').append(toast);
-        const bsToast = new bootstrap.Toast(toast[0], { delay: 3000 });
-        bsToast.show();
-        toast.on('hidden.bs.toast', function () { $(this).remove(); });
-    }
+    // Add delete task from modal handler
+    $('#deleteTask').click(function() {
+        const taskId = $('#taskDetailId').text();
+        if (confirm('Are you sure you want to delete this task?')) {
+            $.ajax({
+                url: `/api/admin/tasks/${taskId}/`,
+                method: 'DELETE',
+                headers: {
+                    'X-CSRFToken': csrftoken
+                },
+                success: function(response) {
+                    $('#taskDetailsModal').modal('hide');
+                    showToast('Task deleted successfully!', 'success');
+                    window.location.reload(); // Reload the page
+                },
+                error: function(xhr) {
+                    const error = xhr.responseJSON?.message || 'Failed to delete task!';
+                    showToast(error, 'danger');
+                }
+            });
+        }
+    });
 });
 </script>
+
+<style>
+/* Responsive styles */
+@media (max-width: 768px) {
+    .container-fluid {
+        padding-left: 10px;
+        padding-right: 10px;
+    }
+    
+    .card-header h5 {
+        font-size: 1rem;
+    }
+    
+    .btn {
+        padding: 0.375rem 0.75rem;
+        font-size: 0.875rem;
+    }
+}
+
+.table-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.table-scroll table {
+    min-width: 500px;
+}
+
+/* Admin panel styles */
+.admin-panel .btn {
+    margin-bottom: 0.5rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+@media (max-width: 576px) {
+    .admin-panel .btn {
+        font-size: 0.875rem;
+    }
+}
+
+/* Admin Panel styles */
+.card {
+    transition: all 0.3s ease;
+}
+
+.card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.table-responsive {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+#taskSearch, #userSearch {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+#taskSearch + .btn, #userSearch + .btn {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+}
+
+.modal-dialog {
+    max-width: 500px;
+}
+
+.nav-tabs .nav-link {
+    color: #495057;
+}
+
+.nav-tabs .nav-link.active {
+    color: #007bff;
+    font-weight: 500;
+}
+
+.compact-view .card-body {
+    padding: 0.5rem;
+}
+
+.compact-view .table td, .compact-view .table th {
+    padding: 0.5rem;
+}
+
+@media (max-width: 768px) {
+    .card-body {
+        padding: 1rem;
+    }
+    
+    .table-responsive {
+        max-height: 300px;
+    }
+
+    .nav-tabs .nav-link {
+        padding: 0.5rem;
+        font-size: 0.875rem;
+    }
+}
+</style>
 {% endblock %} 
