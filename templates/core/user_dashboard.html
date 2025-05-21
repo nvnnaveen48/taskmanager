@@ -178,7 +178,7 @@
 
     <div class="row" id="tasksContainer">
         {% for task in tasks %}
-        <div class="col-12 mb-4 task-card" data-task-id="{{ task.id }}" style="cursor: pointer;" onclick="window.location.href='/task/{{ task.id }}';">
+        <div class="col-12 mb-4 task-card" data-task-id="{{ task.id }}">
             <div class="card shadow-sm border-0 h-100">
                 <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
                     <h5 class="mb-0">Task #{{ task.id }} - {{ task.user.username }}</h5>
@@ -663,6 +663,78 @@ $(document).ready(function() {
             });
         }
     });
+
+    // Handle mark as done button click
+    $('.mark-done').click(function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        const taskId = $(this).data('task-id');
+        const button = $(this);
+        
+        $.ajax({
+            url: `/mark-task-done/${taskId}/`,
+            method: 'POST',
+            success: function(response) {
+                // Update the task status badge
+                const badge = button.closest('.card').find('.badge');
+                badge.removeClass('bg-warning bg-info text-dark').addClass('bg-success');
+                badge.text('Done');
+                
+                // Remove the action buttons
+                button.closest('.d-flex').remove();
+                
+                // Show success message
+                showToast(response.message, 'success');
+            },
+            error: function() {
+                showToast('Failed to mark task as done!', 'danger');
+            }
+        });
+    });
+
+    // Handle alert button click
+    $('.add-note-btn').click(function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        const taskId = $(this).data('task-id');
+        const button = $(this);
+        
+        $.ajax({
+            url: `/add-note/${taskId}/`,
+            method: 'POST',
+            success: function(response) {
+                // Update the task status badge
+                const badge = button.closest('.card').find('.badge');
+                badge.removeClass('bg-warning text-dark').addClass('bg-info');
+                badge.text('In Progress');
+                
+                // Remove the alert button
+                button.remove();
+                
+                // Show success message
+                showToast(response.message, 'success');
+            },
+            error: function() {
+                showToast('Failed to update task status!', 'danger');
+            }
+        });
+    });
+
+    // Toast function for showing messages
+    function showToast(message, type) {
+        const toast = $(
+            `<div class="toast align-items-center text-bg-${type} border-0 position-fixed bottom-0 end-0 m-3" role="alert" aria-live="assertive" aria-atomic="true" style="z-index:9999;">
+                <div class="d-flex">
+                    <div class="toast-body">${message}</div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+                </div>
+            </div>`
+        );
+        $('body').append(toast);
+        const bsToast = new bootstrap.Toast(toast[0], { delay: 3000 });
+        bsToast.show();
+        toast.on('hidden.bs.toast', function () { $(this).remove(); });
+    }
 });
 </script>
 
