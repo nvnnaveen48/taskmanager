@@ -22,6 +22,10 @@ class CustomUserAdmin(UserAdmin):
         return "No Image"
     profile_image_display.short_description = 'Profile Image'
 
+    def get_search_results(self, request, queryset, search_term):
+        queryset, use_distinct = super().get_search_results(request, queryset, search_term)
+        return queryset, use_distinct
+
 class TaskAdminForm(forms.ModelForm):
     class Meta:
         model = Task
@@ -36,6 +40,7 @@ class TaskAdmin(admin.ModelAdmin):
     list_filter = ('status', 'created_at')
     search_fields = ('user__username',)
     ordering = ('-created_at',)
+    autocomplete_fields = ['user']
     
     def image_display(self, obj):
         if obj.image:

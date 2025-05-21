@@ -4,7 +4,6 @@ __pycache__/
 *$py.class
 *.so
 .Python
-env/
 build/
 develop-eggs/
 dist/
@@ -16,6 +15,7 @@ lib64/
 parts/
 sdist/
 var/
+wheels/
 *.egg-info/
 .installed.cfg
 *.egg
@@ -26,12 +26,15 @@ local_settings.py
 db.sqlite3
 db.sqlite3-journal
 media/
-staticfiles_proj/
-staticfiles/
 
 # Virtual Environment
 venv/
 ENV/
+
+# Environment Variables
+.env
+.env.local
+.env.*.local
 
 # IDE
 .idea/
@@ -43,7 +46,14 @@ ENV/
 .DS_Store
 Thumbs.db
 
-# Project specific
-logs/
-*.pid
-*.sock 
+# Static files
+staticfiles/
+static/admin/
+static/debug_toolbar/
+
+# Coverage
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover 

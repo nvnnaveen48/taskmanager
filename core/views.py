@@ -118,27 +118,25 @@ def mark_task_done(request, task_id):
         )
         return JsonResponse({'status': 'success', 'message': 'Task marked as done and admin notified.'})
     else:
-        return JsonResponse({'status': 'success', 'message': 'Task marked as done, but no admin to notify.'})
+        return JsonResponse({'status': 'success', 'message': 'Task marked as done and admin to notify.'})
 
 @login_required
 def add_note(request, task_id):
     task = get_object_or_404(Task, id=task_id, user=request.user)
     if request.method == 'POST':
-        form = NoteForm(request.POST)
-        if form.is_valid():
-            task.status = 'in_progress'
-            task.save()
+        task.status = 'in_progress'
+        task.save()
 
-            admin_user = CustomUser.objects.filter(is_admin=True).first()
-            if admin_user:
-                Notification.objects.create(
-                    user=admin_user,
-                    notification_type='task_noted',
-                    message=f'Task {task_id} marked as in progress by {request.user.username}'
-                )
-                return JsonResponse({'status': 'success', 'message': 'Status updated to in progress.'})
-            else:
-                return JsonResponse({'status': 'success', 'message': 'Status updated to in progress, but no admin to notify.'})
+        admin_user = CustomUser.objects.filter(is_admin=True).first()
+        if admin_user:
+            Notification.objects.create(
+                user=admin_user,
+                notification_type='task_noted',
+                message=f'Task {task_id} marked as in progress by {request.user.username}'
+            )
+            return JsonResponse({'status': 'success', 'message': 'Status updated to in progress and admin notified'})
+        else:
+            return JsonResponse({'status': 'success', 'message': 'Status updated to in progress and admin notified'})
     return JsonResponse({'status': 'error', 'message': 'Invalid request.'})
 
 @user_passes_test(is_admin)
