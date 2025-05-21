@@ -6,7 +6,7 @@ A Django-based task management system that allows administrators to assign and t
 
 - User Management:
   - Admin can create and manage users
-  - Bulk user import via CSV
+
   - User authentication and authorization
   - Optional email field for users
 
@@ -98,6 +98,4 @@ python manage.py collectstatic
 4. Push to the branch: `git push origin feature/your-feature`
 5. Submit a pull request
 
-## License
 
-This project is licensed under the MIT License - see the LICENSE file for details. 
